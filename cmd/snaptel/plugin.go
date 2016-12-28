@@ -20,9 +20,14 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -30,6 +35,19 @@ import (
 
 	"github.com/urfave/cli"
 )
+
+type Plugin struct {
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	Type        string `json:"type"`
+	Owner       string `json:"owner"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+	Forks       int    `json:"fork_count"`
+	Stars       int    `json:"star_count"`
+	Watchers    int    `json:"watch_count"`
+	Issues      int    `json:"issues_count"`
+}
 
 func loadPlugin(ctx *cli.Context) error {
 	pAsc := ctx.String("plugin-asc")
@@ -189,5 +207,131 @@ func listPlugins(ctx *cli.Context) error {
 	}
 	w.Flush()
 
+	return nil
+}
+
+// Filter takes in an array of plugins, a condition, and returns
+// a filtered array of plugins
+func Filter(vs []Plugin, f func(Plugin) bool) []Plugin {
+	vsf := make([]Plugin, 0)
+	for _, v := range vs {
+		if f(v) {
+			vsf = append(vsf, v)
+		}
+	}
+	return vsf
+}
+
+// HELPER
+func getPluginData(url string) []byte {
+	resp, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	return body
+}
+
+func listCatalog(ctx *cli.Context) error {
+	body := getPluginData("http://staging.webapi.snap-telemetry.io/plugin")
+	pluginNames := make([]Plugin, 0)
+	err := json.Unmarshal(body, &pluginNames)
+	if err != nil {
+		return err
+	}
+	// pluginName := strings.ToLower(ps.ByName("name"))
+	// if pluginName != "" {
+	// 	pluginNames = Filter(pluginNames, func(v Plugin) bool {
+	// 		return strings.Contains(v.FullName, pluginName)
+	// 	})
+	// }
+
+	output, _ := json.MarshalIndent(pluginNames, "", "    ")
+	fmt.Printf(string(output))
+	return nil
+}
+
+func downloadPlugin(ctx *cli.Context) error {
+	if len(ctx.Args()) != 1 {
+		return newUsageError("Incorrect usage:", ctx)
+	}
+	url := ctx.Args().Get(0)
+	tokens := strings.Split(url, "/")
+	fileName := tokens[len(tokens)-1]
+	fmt.Println("Downloading", url, "to", fileName)
+
+	// TODO: check file existence first with io.IsExist
+	output, err := os.Create(fileName)
+	if err != nil {
+		return fmt.Errorf("Error while creating %s: %v", fileName, err)
+	}
+	defer output.Close()
+
+	response, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("Error while downloading %s: %v", url, err)
+	}
+	defer response.Body.Close()
+
+	n, err := io.Copy(output, response.Body)
+	if err != nil {
+		return fmt.Errorf("Error while downloading %s: %v", url, err)
+	}
+
+	fmt.Println(n, "bytes downloaded.")
+	return nil
+}
+
+// HELPER
+func detectOS() string {
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+	fmt.Println(goos)
+	fmt.Println(goarch)
+	return ""
+}
+
+func testingtesting(ctx *cli.Context) error {
+	fmt.Println("testing testing")
+	// fmt.Println(runtime.GOOS)
+	// fmt.Println(runtime.GOARCH)
+	return nil
+}
+
+func listReleaseLinks(ctx *cli.Context) error {
+	if len(ctx.Args()) != 1 {
+		return newUsageError("Incorrect usage:", ctx)
+	}
+
+	var data map[string]interface{}
+	client := &http.Client{}
+	link := fmt.Sprintf("https://api.github.com/repos/intelsdi-x/%s/releases/latest", ctx.Args().Get(0))
+	req, err := http.NewRequest("GET", link, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+	json.Unmarshal(body, &data)
+	if err != nil {
+		return nil
+	}
+
+	assets := data["assets"].([]interface{})
+	for _, v := range assets {
+		asset := v.(map[string]interface{})
+		fmt.Println(asset["browser_download_url"])
+	}
 	return nil
 }

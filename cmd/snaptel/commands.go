@@ -145,6 +145,27 @@ var (
 						},
 					},
 				},
+				{
+					Name:   "catalog",
+					Usage:  "catalog <plugin_type>", //not done
+					Action: listCatalog,
+				},
+				{
+					Name:   "download",
+					Usage:  "download <download_url>",
+					Action: downloadPlugin,
+				},
+				{
+					Name:   "release",
+					Usage:  "release <plugin_name>",
+					Action: listReleaseLinks,
+				},
+
+				{
+					Name:   "test",
+					Usage:  "test",
+					Action: testingtesting,
+				},
 			},
 		},
 		{
