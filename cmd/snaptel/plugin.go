@@ -223,33 +223,47 @@ func Filter(vs []Plugin, f func(Plugin) bool) []Plugin {
 }
 
 // HELPER
-func getPluginData(url string) []byte {
+func getPluginData(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return body
+	return body, nil
 }
 
 func listCatalog(ctx *cli.Context) error {
-	body := getPluginData("http://staging.webapi.snap-telemetry.io/plugin")
-	pluginNames := make([]Plugin, 0)
-	err := json.Unmarshal(body, &pluginNames)
+	body, err := getPluginData("http://staging.webapi.snap-telemetry.io/plugin")
 	if err != nil {
 		return err
 	}
-	// pluginName := strings.ToLower(ps.ByName("name"))
-	// if pluginName != "" {
-	// 	pluginNames = Filter(pluginNames, func(v Plugin) bool {
-	// 		return strings.Contains(v.FullName, pluginName)
-	// 	})
-	// }
-
+	pluginNames := make([]Plugin, 0)
+	err = json.Unmarshal(body, &pluginNames)
+	if err != nil {
+		return err
+	}
+	pType := ctx.String("plugin-type")
+	pName := ctx.String("plugin-name")
+	if pType != "" && pName != "" {
+		pluginNames = Filter(pluginNames, func(v Plugin) bool {
+			return strings.Contains(v.Type, pType) && strings.Contains(v.FullName, pName)
+		})
+	} else {
+		if pType != "" {
+			pluginNames = Filter(pluginNames, func(v Plugin) bool {
+				return strings.Contains(v.Type, pType)
+			})
+		}
+		if pName != "" {
+			pluginNames = Filter(pluginNames, func(v Plugin) bool {
+				return strings.Contains(v.FullName, pName) || strings.Contains(v.Name, pName)
+			})
+		}
+	}
 	output, _ := json.MarshalIndent(pluginNames, "", "    ")
 	fmt.Printf(string(output))
 	return nil
@@ -260,8 +274,88 @@ func downloadPlugin(ctx *cli.Context) error {
 		return newUsageError("Incorrect usage:", ctx)
 	}
 	url := ctx.Args().Get(0)
+	download(url, "")
+	return nil
+}
+
+func latestReleaseData(url string) (map[string]interface{}, error) {
+	var data map[string]interface{}
+	client := &http.Client{}
+	link := fmt.Sprintf("https://api.github.com/repos/intelsdi-x/%s/releases/latest", url)
+	req, err := http.NewRequest("GET", link, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	json.Unmarshal(body, &data)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func listReleaseLinks(ctx *cli.Context) error {
+	if len(ctx.Args()) != 1 {
+		return newUsageError("Incorrect usage:", ctx)
+	}
+	data, err := latestReleaseData(ctx.Args().Get(0))
+	if err != nil {
+		return err
+	}
+
+	assets := data["assets"].([]interface{})
+	for _, v := range assets {
+		asset := v.(map[string]interface{})
+		fmt.Println(asset["browser_download_url"])
+	}
+	return nil
+}
+
+func downloadxPlugin(ctx *cli.Context) error {
+	if len(ctx.Args()) != 1 {
+		return newUsageError("Incorrect usage:", ctx)
+	}
+	pluginName := ctx.Args().First()
+	data, err := latestReleaseData(pluginName)
+	if err != nil {
+		return err
+	}
+
+	tag := strings.Split(data["tag_name"].(string), ".")[0]
+	os := runtime.GOOS
+	var arch string
+	switch runtime.GOARCH {
+	case "amd64":
+		arch = "x86_64"
+	case "386":
+		arch = "x86_32"
+	// case "arm":
+	// 	arch =
+	// case "s390x":
+	// 	arch =
+	default:
+		return fmt.Errorf("This arch is not yet supported")
+	}
+	downloadLink := fmt.Sprintf("https://github.com/intelsdi-x/%s/releases/download/%v/snap-plugin-publisher-file_%s_%s", pluginName, tag, os, arch)
+	download(downloadLink, pluginName)
+	return nil
+}
+
+func download(url, name string) error {
 	tokens := strings.Split(url, "/")
-	fileName := tokens[len(tokens)-1]
+	var fileName string
+	fileName = name
+	if name == "" {
+		fileName = tokens[len(tokens)-1]
+	}
 	fmt.Println("Downloading", url, "to", fileName)
 
 	// TODO: check file existence first with io.IsExist
@@ -283,55 +377,5 @@ func downloadPlugin(ctx *cli.Context) error {
 	}
 
 	fmt.Println(n, "bytes downloaded.")
-	return nil
-}
-
-// HELPER
-func detectOS() string {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-	fmt.Println(goos)
-	fmt.Println(goarch)
-	return ""
-}
-
-func testingtesting(ctx *cli.Context) error {
-	fmt.Println("testing testing")
-	// fmt.Println(runtime.GOOS)
-	// fmt.Println(runtime.GOARCH)
-	return nil
-}
-
-func listReleaseLinks(ctx *cli.Context) error {
-	if len(ctx.Args()) != 1 {
-		return newUsageError("Incorrect usage:", ctx)
-	}
-
-	var data map[string]interface{}
-	client := &http.Client{}
-	link := fmt.Sprintf("https://api.github.com/repos/intelsdi-x/%s/releases/latest", ctx.Args().Get(0))
-	req, err := http.NewRequest("GET", link, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil
-	}
-	json.Unmarshal(body, &data)
-	if err != nil {
-		return nil
-	}
-
-	assets := data["assets"].([]interface{})
-	for _, v := range assets {
-		asset := v.(map[string]interface{})
-		fmt.Println(asset["browser_download_url"])
-	}
 	return nil
 }

@@ -147,8 +147,12 @@ var (
 				},
 				{
 					Name:   "catalog",
-					Usage:  "catalog <plugin_type>", //not done
+					Usage:  "catalog <plugin_type>:<plugin_name> or catalog -n <plugin_name> -t <plugin_type>",
 					Action: listCatalog,
+					Flags: []cli.Flag{
+						flPluginType,
+						flPluginName,
+					},
 				},
 				{
 					Name:   "download",
@@ -156,15 +160,14 @@ var (
 					Action: downloadPlugin,
 				},
 				{
+					Name:   "downloadx",
+					Usage:  "downloadx <plugin_name>",
+					Action: downloadxPlugin,
+				},
+				{
 					Name:   "release",
 					Usage:  "release <plugin_name>",
 					Action: listReleaseLinks,
-				},
-
-				{
-					Name:   "test",
-					Usage:  "test",
-					Action: testingtesting,
 				},
 			},
 		},
