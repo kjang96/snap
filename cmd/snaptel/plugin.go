@@ -241,7 +241,7 @@ func listCatalog(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	pluginNames := make([]Plugin, 0)
+	var pluginNames []Plugin
 	err = json.Unmarshal(body, &pluginNames)
 	if err != nil {
 		return err
@@ -264,8 +264,12 @@ func listCatalog(ctx *cli.Context) error {
 			})
 		}
 	}
-	output, _ := json.MarshalIndent(pluginNames, "", "    ")
-	fmt.Printf(string(output))
+	if len(pluginNames) == 0 {
+		fmt.Println("No plugins were found")
+	} else {
+		output, _ := json.MarshalIndent(pluginNames, "", "    ")
+		fmt.Printf(string(output))
+	}
 	return nil
 }
 
@@ -278,17 +282,21 @@ func downloadPlugin(ctx *cli.Context) error {
 	return nil
 }
 
-func latestReleaseData(url string) (map[string]interface{}, error) {
+func latestReleaseData(pName string) (map[string]interface{}, error) {
 	var data map[string]interface{}
 	client := &http.Client{}
-	link := fmt.Sprintf("https://api.github.com/repos/intelsdi-x/%s/releases/latest", url)
+	link := fmt.Sprintf("https://api.github.com/repos/intelsdi-x/%s/releases/latest", pName)
 	req, err := http.NewRequest("GET", link, nil)
 	if err != nil {
 		return nil, err
 	}
+	// CHECK FOR 404 ERROR
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("Error with locating plugin %s: %s", pName, resp.Status)
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
@@ -299,6 +307,8 @@ func latestReleaseData(url string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	// output, _ := json.MarshalIndent(data, "", "\t")
+	// fmt.Println(string(output))
 	return data, nil
 }
 
@@ -321,22 +331,21 @@ func listReleaseLinks(ctx *cli.Context) error {
 
 func downloadxPlugin(ctx *cli.Context) error {
 	if len(ctx.Args()) != 1 {
-		return newUsageError("Incorrect usage:", ctx)
+		return newUsageError("Incorrect usage: Incorrect number of arguments--requires 1", ctx)
 	}
 	pluginName := ctx.Args().First()
 	data, err := latestReleaseData(pluginName)
 	if err != nil {
 		return err
 	}
-
 	tag := strings.Split(data["tag_name"].(string), ".")[0]
 	os := runtime.GOOS
 	var arch string
 	switch runtime.GOARCH {
 	case "amd64":
 		arch = "x86_64"
-	case "386":
-		arch = "x86_32"
+	// case "386":
+	// 	arch = "x86_32"
 	// case "arm":
 	// 	arch =
 	// case "s390x":
@@ -344,8 +353,12 @@ func downloadxPlugin(ctx *cli.Context) error {
 	default:
 		return fmt.Errorf("This arch is not yet supported")
 	}
-	downloadLink := fmt.Sprintf("https://github.com/intelsdi-x/%s/releases/download/%v/snap-plugin-publisher-file_%s_%s", pluginName, tag, os, arch)
-	download(downloadLink, pluginName)
+	downloadLink := fmt.Sprintf("https://github.com/intelsdi-x/%s/releases/download/%v/%s_%s_%s", pluginName, tag, pluginName, os, arch)
+	err = download(downloadLink, pluginName)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
 	return nil
 }
 
@@ -357,7 +370,6 @@ func download(url, name string) error {
 		fileName = tokens[len(tokens)-1]
 	}
 	fmt.Println("Downloading", url, "to", fileName)
-
 	// TODO: check file existence first with io.IsExist
 	output, err := os.Create(fileName)
 	if err != nil {
@@ -367,12 +379,14 @@ func download(url, name string) error {
 
 	response, err := http.Get(url)
 	if err != nil {
+		os.Remove(fileName)
 		return fmt.Errorf("Error while downloading %s: %v", url, err)
 	}
 	defer response.Body.Close()
 
 	n, err := io.Copy(output, response.Body)
 	if err != nil {
+		os.Remove(fileName)
 		return fmt.Errorf("Error while downloading %s: %v", url, err)
 	}
 
