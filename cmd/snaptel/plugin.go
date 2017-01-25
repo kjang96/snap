@@ -273,7 +273,7 @@ func listCatalog(ctx *cli.Context) error {
 	return nil
 }
 
-func downloadPlugin(ctx *cli.Context) error {
+func downloadxPlugin(ctx *cli.Context) error {
 	if len(ctx.Args()) != 1 {
 		return newUsageError("Incorrect usage:", ctx)
 	}
@@ -329,7 +329,7 @@ func listReleaseLinks(ctx *cli.Context) error {
 	return nil
 }
 
-func downloadxPlugin(ctx *cli.Context) error {
+func downloadPlugin(ctx *cli.Context) error {
 	if len(ctx.Args()) != 1 {
 		return newUsageError("Incorrect usage: Incorrect number of arguments--requires 1", ctx)
 	}

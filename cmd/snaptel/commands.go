@@ -145,6 +145,7 @@ var (
 						},
 					},
 				},
+
 				{
 					Name:   "catalog",
 					Usage:  "catalog <plugin_type>:<plugin_name> or catalog -n <plugin_name> -t <plugin_type>",
@@ -156,12 +157,12 @@ var (
 				},
 				{
 					Name:   "download",
-					Usage:  "download <download_url>",
+					Usage:  "download <plugin_name>",
 					Action: downloadPlugin,
 				},
 				{
 					Name:   "downloadx",
-					Usage:  "downloadx <plugin_name>",
+					Usage:  "downloadx <download_url>",
 					Action: downloadxPlugin,
 				},
 				{
